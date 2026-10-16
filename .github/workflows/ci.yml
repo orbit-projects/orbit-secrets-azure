@@ -1,0 +1,46 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  quality:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository_owner }}/orbit-secrets
+          path: orbit-secrets
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install contract, adapter, and quality tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ./orbit-secrets
+          python -m pip install -e '.[dev]' build
+      - run: python -m pytest -q --cov=orbit_secrets_azure --cov-report=term-missing --cov-report=xml:coverage.xml
+      - name: Upload coverage report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: coverage.xml
+          if-no-files-found: error
+          retention-days: 14
+      - run: python -m ruff check src tests
+      - run: python -m ruff format --check src tests
+      - run: python -m mypy
+      - run: pip-audit --skip-editable --progress-spinner off
+      - run: python -m build
